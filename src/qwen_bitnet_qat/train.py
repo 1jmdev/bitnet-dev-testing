@@ -147,12 +147,26 @@ def train_from_config(config_path: str | Path) -> None:
         num_workers=int(_cfg(cfg, "data.num_workers", 0)),
     )
 
-    optim = AdamW(
-        [p for p in model.parameters() if p.requires_grad],
-        lr=float(_cfg(cfg, "training.learning_rate", 2e-5)),
-        betas=tuple(_cfg(cfg, "training.betas", [0.9, 0.95])),
-        weight_decay=float(_cfg(cfg, "training.weight_decay", 0.1)),
-    )
+    optim_name = str(_cfg(cfg, "training.optimizer", "adamw")).lower()
+    optim_params = [p for p in model.parameters() if p.requires_grad]
+
+    if optim_name in {"adamw8bit", "paged_adamw8bit", "paged_adamw_8bit"}:
+        import bitsandbytes as bnb
+
+        opt_cls = bnb.optim.PagedAdamW8bit if "paged" in optim_name else bnb.optim.AdamW8bit
+        optim = opt_cls(
+            optim_params,
+            lr=float(_cfg(cfg, "training.learning_rate", 2e-5)),
+            betas=tuple(_cfg(cfg, "training.betas", [0.9, 0.95])),
+            weight_decay=float(_cfg(cfg, "training.weight_decay", 0.1)),
+        )
+    else:
+        optim = AdamW(
+            optim_params,
+            lr=float(_cfg(cfg, "training.learning_rate", 2e-5)),
+            betas=tuple(_cfg(cfg, "training.betas", [0.9, 0.95])),
+            weight_decay=float(_cfg(cfg, "training.weight_decay", 0.1)),
+        )
     epochs = int(_cfg(cfg, "training.epochs", 1))
     max_steps = int(_cfg(cfg, "training.max_steps", 0))
     updates_per_epoch = math.ceil(len(dataloader) / accelerator.gradient_accumulation_steps)
